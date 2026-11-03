@@ -1,0 +1,136 @@
+name: pbx-ia
+
+services:
+  # --- LLM: Ollama con GPU (RTX 3070 Ti). Modelos en volumen persistente. ---
+  ollama:
+    image: ollama/ollama:latest
+    container_name: pbx-ollama
+    # Sin publicar puerto al host: el 11434 del host ya está ocupado por otro
+    # proceso y NO hace falta — el agente llega por la red interna de compose
+    # (http://ollama:11434). Para depurar desde el host: `docker exec pbx-ollama ...`
+    # o mapear un puerto alterno (p. ej. "127.0.0.1:11435:11434").
+    expose:
+      - "11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "ls"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- Orquestador (agente). Fase 1: CLI de texto + tool calling. ---
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pbx-ia/agent:latest
+    container_name: pbx-agent
+    env_file: .env
+    environment:
+      # Dentro de la red de compose, Ollama es 'ollama', NO 127.0.0.1.
+      # Esto pisa el OLLAMA_HOST del .env (python-dotenv no sobreescribe el entorno).
+      OLLAMA_HOST: http://ollama:11434
+    depends_on:
+      ollama:
+        condition: service_healthy
+    volumes:
+      - ./:/app          # montamos el código: editar sin reconstruir (dev)
+    working_dir: /app
+    stdin_open: true     # permite CLI interactiva con `docker compose run`
+    tty: true
+    command: ["python", "-m", "agent.chat_cli"]
+
+  # --- Voz (Fase 2): STT faster-whisper + TTS Kokoro, en CPU. ---
+  voice:
+    build:
+      context: .
+      dockerfile: Dockerfile.voice
+    image: pbx-ia/voice:latest
+    container_name: pbx-voice
+    env_file: .env
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    depends_on:
+      ollama:
+        condition: service_healthy
+    volumes:
+      - ./:/app
+      - hf_cache:/root/.cache          # cachea modelos de Whisper/Kokoro (HF)
+    working_dir: /app
+    stdin_open: true
+    tty: true
+    command: ["python", "-m", "agent.voice_pipeline", "--selftest"]
+
+  # --- Fase 3: servidor AudioSocket (puente Asterisk <-> agente). Reusa imagen de voz. ---
+  audiosocket:
+    build:
+      context: .
+      dockerfile: Dockerfile.voice
+    image: pbx-ia/voice:latest
+    container_name: pbx-audiosocket
+    env_file: .env
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    volumes:
+      - ./:/app
+      - hf_cache:/root/.cache
+    working_dir: /app
+    expose:
+      - "9000"
+    command: ["python", "-m", "telephony.audiosocket_server"]
+    restart: unless-stopped
+
+  # --- UI web: configurar herramientas del agente + probar + chat (localhost:8000). ---
+  webui:
+    build:
+      context: .
+      dockerfile: Dockerfile.webui
+    image: pbx-ia/webui:latest
+    container_name: pbx-webui
+    env_file: .env
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    volumes:
+      - ./:/app                  # comparte código + data/tools.json con el agente
+    working_dir: /app
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  # --- Fase 3: Asterisk (PBX de laboratorio). Marca 100 -> agente. ---
+  asterisk:
+    image: andrius/asterisk:latest
+    container_name: pbx-asterisk
+    depends_on:
+      - audiosocket
+    volumes:
+      - ./telephony/asterisk/pjsip.conf:/etc/asterisk/pjsip.conf:ro
+      - ./telephony/asterisk/extensions.conf:/etc/asterisk/extensions.conf:ro
+      - ./telephony/asterisk/rtp.conf:/etc/asterisk/rtp.conf:ro
+    ports:
+      - "5060:5060/udp"            # SIP
+      - "5060:5060/tcp"
+      - "10000-10030:10000-10030/udp"  # RTP (rango acotado, ver rtp.conf)
+    command: ["asterisk", "-fn"]
+    restart: unless-stopped
+
+volumes:
+  ollama_models:
+  hf_cache:

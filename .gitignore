@@ -1,0 +1,22 @@
+# Secretos y entorno
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Modelos / audio generados
+*.onnx
+*.onnx.json
+*.wav
+/tmp/
+
+# Node / frontend
+node_modules/
+webui/frontend/dist/
+
+# Varios
+.DS_Store

@@ -1,0 +1,41 @@
+[
+  {
+    "name": "consultar_factura",
+    "description": "Consulta el estado de una factura por su número.",
+    "method": "GET",
+    "url": "{base}/facturas/{numero}",
+    "auth": "bearer",
+    "parameters": [
+      {
+        "name": "numero",
+        "type": "string",
+        "description": "Número de factura, p. ej. 53380",
+        "required": true,
+        "location": "path"
+      }
+    ]
+  },
+  {
+    "name": "crear_ticket",
+    "description": "Crea un ticket de soporte con un asunto y una descripción. Úsala cuando el usuario reporta un problema que requiere seguimiento.",
+    "method": "POST",
+    "url": "{base}/tickets",
+    "auth": "bearer",
+    "parameters": [
+      {
+        "name": "asunto",
+        "type": "string",
+        "description": "Título breve del ticket.",
+        "required": true,
+        "location": "body"
+      },
+      {
+        "name": "descripcion",
+        "type": "string",
+        "description": "Detalle del problema reportado.",
+        "required": true,
+        "location": "body"
+      }
+    ]
+  }
+]

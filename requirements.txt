@@ -1,0 +1,14 @@
+# --- Núcleo del agente (Fase 1) ---
+ollama>=0.4.0            # cliente HTTP de Ollama + tool calling
+httpx>=0.27             # llamadas HTTP a las APIs/webhooks del usuario (dispatch)
+python-dotenv>=1.0      # carga de .env
+
+# --- Voz local (Fase 2) --- (se usan a partir de la Fase 2)
+faster-whisper>=1.0     # STT (CTranslate2); GPU (CUDA) o CPU
+kokoro>=0.9             # TTS Kokoro-82M (reemplaza a Piper: mejor voz, igual de ligero, CPU)
+soundfile>=0.12         # leer/escribir WAV
+sounddevice>=0.4        # captura/reproducción de audio (paso 2 de Fase 2)
+numpy>=1.26
+soxr>=0.5               # resampleo 8k<->16k (Fase 3)
+# Kokoro necesita 'espeak-ng' (G2P) instalado en el sistema (apt).
+# silero-vad / webrtcvad: VAD para turnos; se añade al refinar Fase 2.
