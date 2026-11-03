@@ -5,6 +5,7 @@
     "method": "GET",
     "url": "{base}/facturas/{numero}",
     "auth": "bearer",
+    "headers": [],
     "parameters": [
       {
         "name": "numero",
@@ -21,6 +22,7 @@
     "method": "POST",
     "url": "{base}/tickets",
     "auth": "bearer",
+    "headers": [],
     "parameters": [
       {
         "name": "asunto",

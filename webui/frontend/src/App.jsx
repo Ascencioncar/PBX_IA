@@ -12,8 +12,9 @@ const api = async (path, opts = {}) => {
   return res.json();
 };
 
-const EMPTY_TOOL = { name: "", description: "", method: "GET", url: "{base}/", auth: "none", parameters: [] };
+const EMPTY_TOOL = { name: "", description: "", method: "GET", url: "https://", auth: "none", headers: [], parameters: [] };
 const EMPTY_PARAM = { name: "", type: "string", description: "", required: true, location: "query" };
+const EMPTY_HEADER = { name: "", value: "" };
 const METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH"];
 
 export default function App() {
@@ -60,9 +61,16 @@ export default function App() {
 function ToolsTab({ tools, reload, info, setError }) {
   const [editing, setEditing] = useState(null);
   const [isNew, setIsNew] = useState(false);
+  const [query, setQuery] = useState("");
+  const fileRef = React.useRef(null);
 
   const startNew = () => { setEditing(structuredClone(EMPTY_TOOL)); setIsNew(true); };
   const startEdit = (t) => { setEditing(structuredClone(t)); setIsNew(false); };
+  const duplicate = (t) => {
+    const copy = structuredClone(t);
+    copy.name = `${t.name}_copia`;
+    setEditing(copy); setIsNew(true);
+  };
 
   const save = async (tool, originalName) => {
     try {
@@ -77,20 +85,60 @@ function ToolsTab({ tools, reload, info, setError }) {
     catch (e) { setError(e.message); }
   };
 
+  // Exportar / importar el set completo (útil para migrar la config entre equipos).
+  const exportAll = () => {
+    const blob = new Blob([JSON.stringify(tools, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "tools.json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+  const importAll = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const incoming = JSON.parse(await file.text());
+      if (!Array.isArray(incoming)) throw new Error("El archivo debe ser una lista de herramientas.");
+      const existing = new Set(tools.map((t) => t.name));
+      for (const tool of incoming) {
+        if (!tool?.name) continue;
+        if (existing.has(tool.name)) await api(`/api/tools/${encodeURIComponent(tool.name)}`, { method: "PUT", body: JSON.stringify(tool) });
+        else await api("/api/tools", { method: "POST", body: JSON.stringify(tool) });
+      }
+      reload();
+    } catch (err) { setError(`Importación: ${err.message}`); }
+  };
+
+  const shown = tools.filter((t) =>
+    !query || t.name.toLowerCase().includes(query.toLowerCase()) || (t.description || "").toLowerCase().includes(query.toLowerCase())
+  );
+
   return (
     <main className="layout">
       <section className="panel">
         <div className="panel-head">
           <h2>Herramientas <span className="count">{tools.length}</span></h2>
-          <button className="btn primary" onClick={startNew}>Nueva</button>
+          <div className="head-actions">
+            <button className="btn ghost sm" title="Exportar a tools.json" onClick={exportAll} disabled={!tools.length}>Exportar</button>
+            <button className="btn ghost sm" title="Importar desde un tools.json" onClick={() => fileRef.current?.click()}>Importar</button>
+            <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={importAll} />
+            <button className="btn primary sm" onClick={startNew}>+ Nueva</button>
+          </div>
         </div>
-        {!info?.tools_base_url_set && (
-          <p className="hint">Sin <code>TOOLS_BASE_URL</code> → las pruebas devuelven datos simulados.</p>
+        <p className={`srcpill ${info?.tools_base_url_set ? "ok" : ""}`}>
+          {info?.tools_base_url_set
+            ? <>API real: <code>{info.tools_base_url}</code></>
+            : <>Sin <code>TOOLS_BASE_URL</code> · las pruebas devuelven datos <b>simulados</b></>}
+        </p>
+        {tools.length > 4 && (
+          <input className="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar herramienta…" />
         )}
         <div className="cards">
-          {tools.length === 0 && <p className="muted">Aún no hay herramientas.</p>}
-          {tools.map((t) => (
-            <button
+          {tools.length === 0 && <p className="muted">Aún no hay herramientas. Crea una o importa un <code>tools.json</code>.</p>}
+          {shown.map((t) => (
+            <div
               key={t.name}
               className={`toolrow ${editing && !isNew && editing.name === t.name ? "sel" : ""}`}
               onClick={() => startEdit(t)}
@@ -100,20 +148,24 @@ function ToolsTab({ tools, reload, info, setError }) {
                 <b>{t.name}</b>
                 <small>{t.description || t.url}</small>
               </span>
-              <span className="del" onClick={(e) => { e.stopPropagation(); remove(t.name); }}>✕</span>
-            </button>
+              <span className="row-ops">
+                <button className="iconbtn" title="Duplicar" onClick={(e) => { e.stopPropagation(); duplicate(t); }}>⧉</button>
+                <button className="iconbtn del" title="Borrar" onClick={(e) => { e.stopPropagation(); remove(t.name); }}>✕</button>
+              </span>
+            </div>
           ))}
         </div>
       </section>
 
       <section className="panel">
         {editing ? (
-          <ToolEditor tool={editing} isNew={isNew} onCancel={() => setEditing(null)} onSave={save} setError={setError} />
+          <ToolEditor tool={editing} isNew={isNew} info={info} onCancel={() => setEditing(null)} onSave={save} setError={setError} />
         ) : (
           <div className="placeholder">
             <p>Elige una herramienta o crea una nueva.</p>
             <p className="muted">
-              Usa <code>{"{base}"}</code> para la URL base y <code>{"{param}"}</code> para parámetros de ruta.
+              Usa <code>{"{base}"}</code> para la URL base (<code>TOOLS_BASE_URL</code>) y <code>{"{nombre}"}</code> para
+              insertar un parámetro de tipo <i>path</i> en la ruta.
             </p>
           </div>
         )}
@@ -122,7 +174,7 @@ function ToolsTab({ tools, reload, info, setError }) {
   );
 }
 
-function ToolEditor({ tool, isNew, onCancel, onSave, setError }) {
+function ToolEditor({ tool, isNew, info, onCancel, onSave, setError }) {
   const [t, setT] = useState(tool);
   const [testArgs, setTestArgs] = useState({});
   const [testResult, setTestResult] = useState(null);
@@ -135,6 +187,24 @@ function ToolEditor({ tool, isNew, onCancel, onSave, setError }) {
   const setParam = (i, k, v) => setT((x) => ({ ...x, parameters: x.parameters.map((p, idx) => idx === i ? { ...p, [k]: v } : p) }));
   const addParam = () => setT((x) => ({ ...x, parameters: [...x.parameters, { ...EMPTY_PARAM }] }));
   const delParam = (i) => setT((x) => ({ ...x, parameters: x.parameters.filter((_, idx) => idx !== i) }));
+  const headers = t.headers || [];
+  const setHeader = (i, k, v) => setT((x) => ({ ...x, headers: (x.headers || []).map((h, idx) => idx === i ? { ...h, [k]: v } : h) }));
+  const addHeader = () => setT((x) => ({ ...x, headers: [...(x.headers || []), { ...EMPTY_HEADER }] }));
+  const delHeader = (i) => setT((x) => ({ ...x, headers: (x.headers || []).filter((_, idx) => idx !== i) }));
+
+  // --- Vista previa de la petición real que se enviará ---
+  const preview = buildPreview(t, testArgs, info);
+
+  // --- Avisos de consistencia (no bloquean, solo guían) ---
+  const warnings = [];
+  const pathParams = [...t.url.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).filter((n) => n !== "base");
+  for (const pn of pathParams) {
+    if (!t.parameters.some((p) => p.name === pn)) warnings.push(`La URL usa {${pn}} pero no existe un parámetro con ese nombre.`);
+  }
+  for (const p of t.parameters) {
+    if (p.location === "path" && !t.url.includes(`{${p.name}}`)) warnings.push(`El parámetro «${p.name}» es de tipo path pero no aparece en la URL como {${p.name}}.`);
+  }
+  if (!t.url.startsWith("http") && !t.url.includes("{base}")) warnings.push("La URL no empieza por http ni usa {base}: puede no resolverse.");
 
   const persist = async () => {
     try { await api("/api/tools", { method: "POST", body: JSON.stringify(t) }); }
@@ -148,6 +218,9 @@ function ToolEditor({ tool, isNew, onCancel, onSave, setError }) {
       setTestResult(r.result);
     } catch (e) { setError(e.message); } finally { setTesting(false); }
   };
+
+  const estado = testResult?.estado;
+  const resultKind = estado === "ERROR" ? "err" : estado === "SIMULADO" ? "sim" : testResult ? "ok" : "";
 
   return (
     <div className="form">
@@ -168,16 +241,33 @@ function ToolEditor({ tool, isNew, onCancel, onSave, setError }) {
         </div>
         <div className="field span2">
           <label>URL</label>
-          <input value={t.url} onChange={(e) => set("url", e.target.value)} placeholder="{base}/facturas/{numero}" />
+          <input value={t.url} onChange={(e) => set("url", e.target.value)} placeholder="https://api.ejemplo.com/v1/facturas/{numero}" />
         </div>
       </div>
+      <p className="muted small url-note">
+        Servicio externo: pega la URL completa (<code>https://…</code>). Usa <code>{"{base}"}</code> solo si configuraste <code>TOOLS_BASE_URL</code>.
+        Para un servicio del propio equipo usa <code>host.docker.internal</code>, no <code>localhost</code>.
+      </p>
       <div className="field">
         <label>Autenticación</label>
         <select value={t.auth} onChange={(e) => set("auth", e.target.value)}>
           <option value="none">Ninguna</option>
-          <option value="bearer">Bearer (usa TOOLS_API_KEY)</option>
+          <option value="bearer">Bearer (usa TOOLS_API_KEY global)</option>
         </select>
       </div>
+
+      <div className="subhead">
+        <label>Cabeceras <small>— para la API key del servicio externo, etc.</small></label>
+        <button className="btn ghost" onClick={addHeader}>+ cabecera</button>
+      </div>
+      {headers.length === 0 && <p className="muted small">Sin cabeceras.</p>}
+      {headers.map((h, i) => (
+        <div className="hrow" key={i}>
+          <input value={h.name} onChange={(e) => setHeader(i, "name", e.target.value)} placeholder="X-API-Key" />
+          <input value={h.value} onChange={(e) => setHeader(i, "value", e.target.value)} placeholder="valor / token" />
+          <button className="del2" onClick={() => delHeader(i)}>✕</button>
+        </div>
+      ))}
 
       <div className="subhead">
         <label>Parámetros</label>
@@ -195,6 +285,10 @@ function ToolEditor({ tool, isNew, onCancel, onSave, setError }) {
         </div>
       ))}
 
+      {warnings.length > 0 && (
+        <ul className="warnlist">{warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
+      )}
+
       <div className="actions">
         <button className="btn primary" onClick={() => onSave(t, originalName)} disabled={!t.name}>Guardar</button>
         <button className="btn ghost" onClick={onCancel}>Cancelar</button>
@@ -204,15 +298,60 @@ function ToolEditor({ tool, isNew, onCancel, onSave, setError }) {
         <div className="subhead"><label>Probar</label></div>
         {t.parameters.map((p) => (
           <div className="field" key={p.name}>
-            <label>{p.name} <small>{p.location}</small></label>
+            <label>{p.name} <small>{p.location}{p.required ? " · req" : ""}</small></label>
             <input value={testArgs[p.name] ?? ""} onChange={(e) => setTestArgs({ ...testArgs, [p.name]: e.target.value })} placeholder={p.description} />
           </div>
         ))}
+
+        {/* Vista previa de la petición resultante */}
+        <div className="preview">
+          <div className="preview-line"><span className={`tag ${t.method}`}>{t.method}</span> <code>{preview.url}</code></div>
+          {preview.auth && <div className="preview-sub">Authorization: {preview.auth}</div>}
+          {preview.headers.map((h, i) => <div className="preview-sub" key={i}>{h}</div>)}
+          {preview.body && <div className="preview-sub">body: <code>{preview.body}</code></div>}
+        </div>
+
         <button className="btn" onClick={runTest} disabled={testing || !t.name}>{testing ? "Ejecutando…" : "Ejecutar"}</button>
-        {testResult && <pre className="result">{JSON.stringify(testResult, null, 2)}</pre>}
+        {testResult && (
+          <div className={`result-box ${resultKind}`}>
+            <div className="result-head">
+              <span className="badge">{estado === "ERROR" ? "✕ Error" : estado === "SIMULADO" ? "◐ Simulado" : "✓ Respuesta"}</span>
+              <button className="btn ghost sm" onClick={() => navigator.clipboard?.writeText(JSON.stringify(testResult, null, 2))}>Copiar</button>
+            </div>
+            <pre className="result">{JSON.stringify(testResult, null, 2)}</pre>
+          </div>
+        )}
       </div>
     </div>
   );
+}
+
+// Construye una vista previa legible de la petición HTTP resultante.
+function buildPreview(t, testArgs, info) {
+  const base = info?.tools_base_url || "{base}";
+  let url = (t.url || "").replace("{base}", base);
+  const query = [];
+  const body = {};
+  for (const p of t.parameters || []) {
+    const v = testArgs[p.name];
+    if (p.location === "path") {
+      url = url.replace(`{${p.name}}`, v != null && v !== "" ? encodeURIComponent(v) : `:${p.name}`);
+    } else if (p.location === "body") {
+      if (v != null && v !== "") body[p.name] = v;
+    } else if (v != null && v !== "") {
+      query.push(`${encodeURIComponent(p.name)}=${encodeURIComponent(v)}`);
+    }
+  }
+  if (query.length) url += (url.includes("?") ? "&" : "?") + query.join("&");
+  const hdrs = (t.headers || [])
+    .filter((h) => h.name)
+    .map((h) => `${h.name}: ${h.value ? (/key|token|secret|auth/i.test(h.name) ? "••••••" : h.value) : "(vacío)"}`);
+  return {
+    url,
+    auth: t.auth === "bearer" ? (info?.api_key_set ? "Bearer ••••••" : "Bearer <falta TOOLS_API_KEY>") : "",
+    headers: hdrs,
+    body: Object.keys(body).length ? JSON.stringify(body) : "",
+  };
 }
 
 /* --------------------------------- Chat --------------------------------- */

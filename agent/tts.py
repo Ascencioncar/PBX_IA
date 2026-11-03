@@ -18,10 +18,25 @@ _pipeline = None  # KPipeline perezoso (se carga al primer uso)
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 _MD_RE = re.compile(r"[*_`#>]+")
 
+# Emojis y pictogramas: Kokoro los leería por su nombre ("cara feliz con ojos
+# sonrientes"), así que los eliminamos antes de sintetizar.
+_EMOJI_RE = re.compile(
+    "["
+    "\U0001F000-\U0001FAFF"  # emojis, pictogramas y símbolos suplementarios
+    "\U00002600-\U000027BF"  # símbolos misceláneos + dingbats
+    "\U00002B00-\U00002BFF"  # símbolos y flechas varias
+    "\U0000FE00-\U0000FE0F"  # selectores de variación
+    "\U00002122\U00002139\U000024C2"  # ™ ℹ Ⓜ
+    "\U0000200D"             # zero-width joiner (emojis compuestos)
+    "]+",
+    flags=re.UNICODE,
+)
+
 
 def clean_for_tts(text: str) -> str:
     text = _THINK_RE.sub("", text)
     text = _MD_RE.sub("", text)
+    text = _EMOJI_RE.sub("", text)
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 

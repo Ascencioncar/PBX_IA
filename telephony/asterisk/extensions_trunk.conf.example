@@ -1,0 +1,22 @@
+; ---------------------------------------------------------------------------
+; DIALPLAN para las llamadas que llegan por la troncal de Elastix
+; ---------------------------------------------------------------------------
+; Copia este contexto AL FINAL de telephony/asterisk/extensions.conf y recarga:
+;     docker compose exec asterisk asterisk -rx "dialplan reload"
+;
+; Elastix enviará la llamada al "número específico" del agente (p.ej. 7000) en
+; ${EXTEN}. Todo lo que entre por esta troncal se enruta al agente de IA
+; (servidor AudioSocket en audiosocket:9000).
+; ---------------------------------------------------------------------------
+
+[from-elastix]
+; Número dedicado del agente. Cambia 7000 por el que uses en Elastix.
+exten => 7000,1,NoOp(Llamada desde Elastix al agente IA -> ${CALLERID(all)})
+ same => n,Answer()
+ same => n,Set(UUID=${SHELL(cat /proc/sys/kernel/random/uuid | tr -d '\n')})
+ same => n,AudioSocket(${UUID},audiosocket:9000)
+ same => n,Hangup()
+
+; Comodín: cualquier otro número que mande la troncal también va al agente.
+; (Útil si Elastix enruta por DID en vez de por un número fijo.)
+exten => _X.,1,Goto(from-elastix,7000,1)

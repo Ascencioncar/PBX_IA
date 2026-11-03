@@ -1,0 +1,51 @@
+; ---------------------------------------------------------------------------
+; TRONCAL ENTRANTE DESDE ELASTIX  ->  Gateway de IA (este Asterisk)
+; ---------------------------------------------------------------------------
+; Copia estos bloques AL FINAL de telephony/asterisk/pjsip.conf y recarga:
+;     docker compose exec asterisk asterisk -rx "pjsip reload"
+;
+; Reemplaza:
+;   ELASTIX_IP  = IP del PBX Elastix en la LAN           (p.ej. 192.168.1.10)
+;   GATEWAY_IP  = IP del equipo que corre Docker (host)  (p.ej. 192.168.1.50)
+;
+; Autenticación por IP (identify): la troncal es servidor-a-servidor, no hay
+; registro ni usuario/clave. Elastix queda autorizado por su dirección de origen.
+; ---------------------------------------------------------------------------
+
+; IMPORTANTE (NAT/Docker): para una troncal desde OTRA máquina, Asterisk debe
+; anunciar en el SDP la IP del HOST que corre Docker (GATEWAY_IP), no 127.0.0.1
+; ni la IP interna del contenedor (172.x). Ajusta el transporte así:
+;
+; [transport-udp]
+; type=transport
+; protocol=udp
+; bind=0.0.0.0:5060
+; external_media_address=GATEWAY_IP
+; external_signaling_address=GATEWAY_IP
+; local_net=172.16.0.0/12          ; red interna de Docker = "local"
+;
+; (Para el softphone local de pruebas usabas 127.0.0.1; con la troncal real
+;  cámbialo a GATEWAY_IP y apunta también el softphone a GATEWAY_IP.)
+
+[elastix-trunk]
+type=endpoint
+context=from-elastix
+disallow=all
+allow=ulaw
+allow=alaw
+direct_media=no
+rtp_symmetric=yes
+force_rport=yes
+rewrite_contact=yes
+dtmf_mode=rfc4733
+aors=elastix-trunk
+
+[elastix-trunk]
+type=aor
+contact=sip:ELASTIX_IP:5060
+qualify_frequency=30          ; "ping" OPTIONS para vigilar el enlace
+
+[elastix-trunk]
+type=identify
+endpoint=elastix-trunk
+match=ELASTIX_IP              ; identifica las llamadas entrantes por IP de origen

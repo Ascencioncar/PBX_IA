@@ -30,12 +30,18 @@ class Param(BaseModel):
     location: str = "query"  # path | query | body
 
 
+class Header(BaseModel):
+    name: str
+    value: str = ""
+
+
 class Tool(BaseModel):
     name: str
     description: str = ""
     method: str = "GET"
     url: str = ""
     auth: str = "none"  # none | bearer
+    headers: list[Header] = []
     parameters: list[Param] = []
 
 

@@ -10,15 +10,21 @@ Formato de cada herramienta en el JSON:
       "description": "…",
       "method": "GET",                      # GET|POST|PUT|DELETE|PATCH
       "url": "{base}/facturas/{numero}",    # {base}=TOOLS_BASE_URL, {param}=param de 'path'
-      "auth": "none" | "bearer",            # bearer usa TOOLS_API_KEY
+      "auth": "none" | "bearer",            # bearer usa TOOLS_API_KEY (global)
+      "headers": [                           # cabeceras propias (p.ej. API key de un servicio externo)
+        {"name": "X-API-Key", "value": "abc123"}
+      ],
       "parameters": [
         {"name": "numero", "type": "string", "description": "…",
          "required": true, "location": "path" | "query" | "body"}
       ]
     }
 
-Si la URL usa {base} y TOOLS_BASE_URL está vacío, dispatch() devuelve una respuesta
-SIMULADA (para poder probar sin backend real).
+La URL puede ser un servicio EXTERNO (full URL, p.ej. "https://api.ejemplo.com/v1/...")
+o usar {base} (= TOOLS_BASE_URL). Si usa {base} y TOOLS_BASE_URL está vacío,
+dispatch() devuelve una respuesta SIMULADA (para probar sin backend real).
+Nota de red (Docker): para llegar a un servicio del PROPIO host usa
+"http://host.docker.internal:PUERTO", no "localhost".
 """
 from __future__ import annotations
 
@@ -130,6 +136,13 @@ def dispatch(name: str, args: dict[str, Any] | None) -> dict[str, Any]:
         else:
             query[n] = args[n]
 
+    # Cabeceras: auth global (bearer) + cabeceras propias de la herramienta.
+    headers = _auth_headers(cfg.get("auth", "none"))
+    for h in cfg.get("headers", []) or []:
+        name = (h.get("name") or "").strip()
+        if name:
+            headers[name] = h.get("value", "")
+
     method = cfg.get("method", "GET").upper()
     try:
         r = httpx.request(
@@ -137,7 +150,7 @@ def dispatch(name: str, args: dict[str, Any] | None) -> dict[str, Any]:
             url,
             params=query or None,
             json=body or None,
-            headers=_auth_headers(cfg.get("auth", "none")),
+            headers=headers,
             timeout=config.TOOLS_TIMEOUT,
         )
         r.raise_for_status()

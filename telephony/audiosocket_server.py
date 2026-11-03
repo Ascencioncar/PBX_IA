@@ -18,6 +18,7 @@ import socketserver
 import struct
 import threading
 import time
+import unicodedata
 
 import numpy as np
 import soxr
@@ -44,6 +45,28 @@ END_SILENCE_MS = 700            # silencio tras hablar => fin de turno
 MIN_SPEECH_MS = 300             # mínimo de voz para considerar un turno
 
 GREETING = "Hola, gracias por llamar. Soy el asistente virtual. ¿En qué puedo ayudarte?"
+
+# Despedida: si el usuario (o el agente) se despide, colgamos tras responder.
+_FAREWELL_HINTS = (
+    "adios", "hasta luego", "hasta pronto", "hasta la proxima", "hasta la vista",
+    "nos vemos", "chao", "chau", "me despido",
+    "eso es todo", "eso seria todo", "con eso es todo",
+    "nada mas gracias", "nada mas, gracias",
+    "gracias eso es todo", "gracias, eso es todo",
+    "que tengas buen dia", "que tenga buen dia",
+    "que tengas un buen dia", "que tenga un buen dia",
+)
+
+
+def _normalize(text: str) -> str:
+    """Minúsculas y sin acentos, para comparar de forma robusta."""
+    text = unicodedata.normalize("NFKD", text.lower())
+    return "".join(c for c in text if not unicodedata.combining(c))
+
+
+def _is_farewell(text: str) -> bool:
+    t = _normalize(text)
+    return any(h in t for h in _FAREWELL_HINTS)
 
 
 def _recv_exact(sock: socket.socket, n: int) -> bytes | None:
@@ -90,6 +113,11 @@ class CallHandler(socketserver.BaseRequestHandler):
                 _, reply = run_conversation(messages, verbose=False)
                 print(f"[call] agente: {reply!r}")
                 self._speak(sock, reply)
+                # Si alguien se despidió, cerramos la llamada tras hablar.
+                if _is_farewell(text) or _is_farewell(reply):
+                    print("[call] despedida detectada -> colgando")
+                    self._hangup(sock)
+                    break
         except (ConnectionError, OSError) as e:
             print(f"[call] socket cerrado: {e}")
         print(f"[call] fin {peer}")
@@ -145,6 +173,14 @@ class CallHandler(socketserver.BaseRequestHandler):
                 frame = frame + b"\x00" * (FRAME_BYTES - len(frame))
             sock.sendall(bytes([T_AUDIO]) + struct.pack(">H", len(frame)) + frame)
             time.sleep(FRAME_MS / 1000.0)  # ritmo ~tiempo real
+
+    # --- Colgar: deja sonar la cola y pide a Asterisk terminar la llamada ---
+    def _hangup(self, sock: socket.socket) -> None:
+        time.sleep(0.4)  # margen para que se reproduzca el final de la despedida
+        try:
+            sock.sendall(bytes([T_TERMINATE]) + struct.pack(">H", 0))
+        except OSError:
+            pass
 
     # --- Vaciar lo que llegó mientras hablábamos (sin barge-in en v1) ---
     def _drain(self, sock: socket.socket) -> None:

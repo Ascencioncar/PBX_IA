@@ -1,0 +1,41 @@
+# Override para macOS (Apple Silicon: M1/M2/M3/M4/M5).
+#
+# POR QUÉ: Docker Desktop en Mac NO expone la GPU/Metal a los contenedores Linux.
+# Si Ollama corriera en un contenedor, iría por CPU (lento). En Mac, Ollama se
+# ejecuta NATIVO (usa Metal, toda la memoria unificada) y los contenedores le
+# hablan por `host.docker.internal:11434`.
+#
+# USO (desde la raíz del proyecto):
+#   1) Instalar y arrancar Ollama nativo:   brew install ollama && ollama serve
+#   2) Descargar el modelo:                 ollama pull qwen3:8b
+#   3) Levantar el resto en Docker:
+#        docker compose -f docker-compose.yml -f docker-compose.mac.yml up -d
+#
+# El servicio `ollama` queda tras un perfil inactivo => NO arranca (ni como
+# dependencia), por eso también se limpia `depends_on` en los demás servicios.
+
+services:
+  ollama:
+    profiles: ["no-usar-en-mac"]   # excluido: en Mac Ollama es nativo
+
+  agent:
+    environment:
+      OLLAMA_HOST: http://host.docker.internal:11434
+    depends_on: []
+
+  voice:
+    environment:
+      OLLAMA_HOST: http://host.docker.internal:11434
+    depends_on: []
+
+  audiosocket:
+    environment:
+      OLLAMA_HOST: http://host.docker.internal:11434
+      PYTHONUNBUFFERED: "1"
+    depends_on: []
+
+  webui:
+    environment:
+      OLLAMA_HOST: http://host.docker.internal:11434
+      PYTHONUNBUFFERED: "1"
+    depends_on: []
