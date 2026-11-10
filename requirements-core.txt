@@ -1,0 +1,6 @@
+# Núcleo compartido (agente de texto + base de voz/webui). Versiones FIJADAS
+# (MejorPBX A7) para builds reproducibles. Capturadas de las imágenes validadas.
+ollama==0.6.3            # cliente de Ollama + tool calling (param think)
+openai==3.42.1           # proveedor OpenAI / API compatible
+httpx==0.28.1            # dispatch HTTP a las APIs del usuario
+python-dotenv==1.2.4     # carga de .env

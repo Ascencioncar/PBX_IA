@@ -10,21 +10,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# torch CPU primero (evita arrastrar las ruedas CUDA, que pesan GBs).
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
-
-RUN pip install --no-cache-dir \
-    "ollama>=0.4.0" \
-    "openai>=1.40" \
-    "httpx>=0.27" \
-    "python-dotenv>=1.0" \
-    "faster-whisper>=1.0" \
-    "kokoro>=0.9" \
-    "soundfile>=0.12" \
-    "soxr>=0.5" \
-    "numpy>=1.26" \
-    "webrtcvad-wheels>=2.0"
+# Dependencias fijadas desde una sola fuente (MejorPBX A7); torch CPU incluido
+# (requirements-voice.txt trae el --extra-index-url del índice CPU de PyTorch).
+COPY requirements-core.txt requirements-voice.txt ./
+RUN pip install --no-cache-dir -r requirements-voice.txt
 
 COPY . .
+
+# Hardening (A7): usuario no-root. La caché de modelos (HF) vive en su home
+# (el volumen hf_cache se monta ahí en docker-compose).
+RUN useradd --create-home --uid 10001 appuser \
+    && mkdir -p /home/appuser/.cache \
+    && chown -R appuser /home/appuser /app
+ENV HF_HOME=/home/appuser/.cache/huggingface \
+    XDG_CACHE_HOME=/home/appuser/.cache
+USER appuser
 
 CMD ["python", "-m", "agent.voice_pipeline", "--selftest"]

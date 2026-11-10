@@ -1,0 +1,9 @@
+# Webui (FastAPI + estáticos React). Versiones FIJADAS (A7).
+-r requirements-core.txt
+
+fastapi==0.162.0
+uvicorn[standard]==0.54.0
+
+# Autenticación (B1): hash de contraseña + cookie de sesión firmada.
+bcrypt==4.2.1
+itsdangerous==2.2.0

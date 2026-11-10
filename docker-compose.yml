@@ -64,7 +64,7 @@ services:
         condition: service_healthy
     volumes:
       - ./:/app
-      - hf_cache:/root/.cache          # cachea modelos de Whisper/Kokoro (HF)
+      - hf_cache:/home/appuser/.cache  # cachea modelos de Whisper/Kokoro (HF), usuario no-root
     working_dir: /app
     stdin_open: true
     tty: true
@@ -86,7 +86,7 @@ services:
         condition: service_healthy
     volumes:
       - ./:/app
-      - hf_cache:/root/.cache
+      - hf_cache:/home/appuser/.cache
     working_dir: /app
     expose:
       - "9000"

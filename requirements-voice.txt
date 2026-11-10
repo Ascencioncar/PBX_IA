@@ -1,0 +1,13 @@
+# Voz (STT faster-whisper + TTS Kokoro, en CPU). Versiones FIJADAS (A7).
+# torch CPU desde el índice oficial (evita arrastrar ruedas CUDA de GBs).
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+-r requirements-core.txt
+
+torch==2.14.1
+faster-whisper==1.2.1
+kokoro==0.9.4
+soundfile==0.14.0
+soxr==1.1.0
+numpy==2.5.4
+webrtcvad-wheels==2.0.14.post1
