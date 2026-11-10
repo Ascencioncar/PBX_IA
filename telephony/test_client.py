@@ -59,7 +59,7 @@ def _read_until_gap(sock: socket.socket, gap_s: float = 0.6, start_s: float = 8.
                 payload += chunk
             if mtype == T_AUDIO:
                 out.extend(payload)
-    except socket.timeout:
+    except TimeoutError:
         pass
     return bytes(out)
 
