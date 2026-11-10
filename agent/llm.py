@@ -12,23 +12,16 @@ para no depender de un formato exacto. Si algo falla, revisar ahí primero.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from typing import Any
 
 import ollama
 
 from . import config, settings, tools
+from .textnorm import clean_for_tts, pop_sentences, split_sentences
 
-SYSTEM_PROMPT = (
-    "Eres el asistente telefónico de la empresa. Hablas español de forma natural y cálida. "
-    "MUY IMPORTANTE: responde en 1 o 2 frases cortas, como en una llamada telefónica. "
-    "NO uses markdown, viñetas, asteriscos ni emojis: tu texto se convierte a voz. "
-    "Di los montos y números de forma hablada y breve. "
-    "Cuando el usuario pide datos reales (facturas, tickets, etc.), USA las herramientas "
-    "en vez de inventar. Si no necesita herramienta, responde directo. "
-    "Nunca inventes números de factura, montos ni identificadores: si no los tienes, pídelos. "
-    "Cuando el usuario se despida o diga que no necesita nada más, despídete de forma breve y amable "
-    "(por ejemplo: 'Gracias por llamar, que tenga un buen día')."
-)
+# Compatibilidad: el prompt por defecto ahora vive en settings (editable en caliente).
+SYSTEM_PROMPT = settings.DEFAULT_SYSTEM_PROMPT
 
 
 def _client(host: str) -> ollama.Client:
@@ -178,9 +171,113 @@ def _run_openai(messages, s, model, max_iterations, verbose, on_tool):
     return messages, "(se alcanzó el máximo de iteraciones de herramientas)"
 
 
+def stream_reply(
+    messages: list[dict[str, Any]],
+    *,
+    model: str | None = None,
+    on_tool=None,
+    max_iterations: int = 8,
+) -> Iterator[str]:
+    """Variante en streaming de ``run_conversation`` (A1/A2 de MejorPBX.md).
+
+    Rinde el mensaje FINAL del asistente **frase a frase**, a medida que el LLM lo
+    genera, para que el TTS pueda empezar a hablar sin esperar la respuesta entera.
+    Las iteraciones con *tool calls* se resuelven igual que en ``run_conversation``
+    (sin emitir voz). ``messages`` se muta in-place, como en el camino clásico.
+
+    Con proveedor OpenAI hace *fallback* no-streaming (rinde la respuesta troceada
+    en frases). No rompe la API de ``run_conversation``, que se mantiene.
+    """
+    s = settings.load()
+    model = model or s.get("model") or config.MODEL
+    if s.get("provider") == "openai":
+        _, reply = _run_openai(messages, s, model, max_iterations, False, on_tool)
+        yield from split_sentences(reply)
+        return
+    yield from _stream_ollama(messages, s, model, max_iterations, on_tool)
+
+
+def _stream_ollama(messages, s, model, max_iterations, on_tool) -> Iterator[str]:
+    client = _client(s.get("ollama_host") or config.OLLAMA_HOST)
+    for _ in range(max_iterations):
+        kwargs = dict(
+            model=model,
+            messages=messages,
+            tools=tools.get_schemas(),
+            options={"num_ctx": s.get("num_ctx"), "num_predict": s.get("num_predict")},
+            stream=True,
+        )
+        try:
+            stream = client.chat(think=bool(s.get("think")), **kwargs)
+        except (TypeError, ollama.ResponseError):
+            stream = client.chat(**kwargs)
+
+        content_parts: list[str] = []
+        tool_calls_acc: list[Any] = []
+        buf = ""
+        for chunk in stream:
+            msg = _as_dict(chunk.get("message") if isinstance(chunk, dict) else chunk["message"])
+            tc = msg.get("tool_calls")
+            if tc:
+                tool_calls_acc.extend(tc)
+            piece = msg.get("content") or ""
+            if piece:
+                content_parts.append(piece)
+                buf += piece
+                sentences, buf = pop_sentences(buf)
+                for sent in sentences:
+                    cleaned = clean_for_tts(sent)
+                    if cleaned:
+                        yield cleaned
+
+        full_content = "".join(content_parts)
+        assistant_msg: dict[str, Any] = {"role": "assistant", "content": full_content}
+        if tool_calls_acc:
+            assistant_msg["tool_calls"] = tool_calls_acc
+        messages.append(assistant_msg)
+
+        calls = _extract_tool_calls({"tool_calls": tool_calls_acc})
+        if not calls:
+            tail = clean_for_tts(buf)
+            if tail:
+                yield tail
+            return
+
+        for call in calls:
+            name, args = call["name"], call["arguments"]
+            result = tools.dispatch(name, args)
+            if on_tool is not None:
+                on_tool(name, args, result)
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_name": name,
+                    "name": name,
+                    "content": json.dumps(result, ensure_ascii=False),
+                }
+            )
+
+
+def trim_history(messages: list[dict[str, Any]], max_turns: int | None = None) -> None:
+    """A3: ventana deslizante. Conserva system + los últimos ``max_turns`` turnos
+    de usuario (y lo que sigue a ese turno), recortando por el inicio de un turno
+    de usuario para no dejar mensajes 'tool' huérfanos. Muta la lista in-place.
+    """
+    n = config.HISTORY_MAX_TURNS if max_turns is None else max_turns
+    if n <= 0 or not messages:
+        return
+    head = messages[:1] if messages[0].get("role") == "system" else []
+    rest = messages[len(head):]
+    user_pos = [i for i, m in enumerate(rest) if m.get("role") == "user"]
+    if len(user_pos) <= n:
+        return
+    start = user_pos[-n]
+    messages[:] = head + rest[start:]
+
+
 def new_messages(user_text: str) -> list[dict[str, Any]]:
     return [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": settings.system_prompt()},
         {"role": "user", "content": user_text},
     ]
 

@@ -16,6 +16,20 @@ SETTINGS_PATH = Path(
     os.getenv("SETTINGS_PATH", str(config.PROJECT_ROOT / "data" / "settings.json"))
 )
 
+# Prompt del sistema por defecto. Editable en caliente desde la UI (B3); vive aquí
+# (no en llm.py) para evitar un import circular settings<->llm.
+DEFAULT_SYSTEM_PROMPT = (
+    "Eres el asistente telefónico de la empresa. Hablas español de forma natural y cálida. "
+    "MUY IMPORTANTE: responde en 1 o 2 frases cortas, como en una llamada telefónica. "
+    "NO uses markdown, viñetas, asteriscos ni emojis: tu texto se convierte a voz. "
+    "Di los montos y números de forma hablada y breve. "
+    "Cuando el usuario pide datos reales (facturas, tickets, etc.), USA las herramientas "
+    "en vez de inventar. Si no necesita herramienta, responde directo. "
+    "Nunca inventes números de factura, montos ni identificadores: si no los tienes, pídelos. "
+    "Cuando el usuario se despida o diga que no necesita nada más, despídete de forma breve y amable "
+    "(por ejemplo: 'Gracias por llamar, que tenga un buen día')."
+)
+
 
 def defaults() -> dict[str, Any]:
     return {
@@ -27,7 +41,13 @@ def defaults() -> dict[str, Any]:
         "num_ctx": config.NUM_CTX,
         "num_predict": config.NUM_PREDICT,
         "think": config.LLM_THINK,
+        "system_prompt": DEFAULT_SYSTEM_PROMPT,
     }
+
+
+def system_prompt() -> str:
+    """Prompt del sistema vigente (editable en caliente)."""
+    return load().get("system_prompt") or DEFAULT_SYSTEM_PROMPT
 
 
 def load() -> dict[str, Any]:

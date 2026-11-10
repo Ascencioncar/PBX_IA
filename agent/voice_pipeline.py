@@ -50,7 +50,7 @@ def selftest() -> int:
 def full_loop(wav_in: str, wav_out: str, *, verbose: bool = False) -> int:
     """WAV pregunta -> STT -> agente (tool calling) -> TTS -> WAV respuesta."""
     from . import stt, tts
-    from .llm import run_conversation, new_messages
+    from .llm import new_messages, run_conversation
 
     print(f"[STT] transcribiendo {wav_in} ...")
     t0 = _t()
@@ -80,7 +80,7 @@ def bench() -> int:
     import soxr
 
     from . import stt, tts
-    from .llm import run_conversation, new_messages
+    from .llm import new_messages, run_conversation
 
     frases = [
         "Hola, gracias por llamar. ¿En qué puedo ayudarte?",
@@ -117,6 +117,28 @@ def bench() -> int:
     print(f"  pregunta transcrita: {user_text!r}")
     print(f"  respuesta: {resp[:80]!r}")
     print(f"  STT={t_stt:.2f}s  LLM={t_llm:.2f}s  TTS={t_tts:.2f}s  TOTAL={t_stt+t_llm+t_tts:.2f}s")
+    print(f"  TTFA sin streaming (clásico) = LLM+TTS = {t_llm + t_tts:.2f}s")
+
+    # --- A1: time-to-first-audio con streaming de LLM + TTS por frases ---
+    print("\n== STREAMING: TIME-TO-FIRST-AUDIO / TTFA (A1) ==")
+    from .llm import stream_reply
+    msgs = new_messages(user_text)
+    t0 = _t()
+    ttfa = None
+    frases = 0
+    audio_total_s = 0.0
+    for sent in stream_reply(msgs):
+        audio = tts.synth(sent)
+        if ttfa is None:
+            ttfa = _t() - t0
+        frases += 1
+        audio_total_s += len(audio) / config.TTS_SAMPLE_RATE
+    total_stream = _t() - t0
+    if ttfa is None:
+        print("  (el modelo no produjo texto final)")
+    else:
+        print(f"  TTFA (streaming) = {ttfa:.2f}s   frases={frases}  audio={audio_total_s:.1f}s  generación_total={total_stream:.2f}s")
+        print(f"  >>> Criterio A1: TTFA < 2.0 s  =>  {'OK ✓' if ttfa < 2.0 else 'NO CUMPLE ✗'}")
 
     import statistics
     print(f"\n[RESUMEN] TTS RTF medio={statistics.mean(tts_rtfs):.2f}  STT medio={statistics.mean(stt_times):.2f}s")

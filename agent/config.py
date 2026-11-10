@@ -44,4 +44,46 @@ TOOLS_TIMEOUT: float = float(os.getenv("TOOLS_TIMEOUT", "10"))
 AUDIOSOCKET_HOST: str = os.getenv("AUDIOSOCKET_HOST", "127.0.0.1")
 AUDIOSOCKET_PORT: int = int(os.getenv("AUDIOSOCKET_PORT", "9000"))
 
+
+def _flag(name: str, default: str = "false") -> bool:
+    return os.getenv(name, default).lower() in {"1", "true", "yes", "si", "sí"}
+
+
+# --- Voz: streaming y barge-in (MejorPBX A1/A2) ---
+# Streaming de TTS por frases (menor time-to-first-audio). Apagar => camino clásico.
+VOICE_STREAMING: bool = _flag("VOICE_STREAMING", "true")
+# Barge-in: permitir interrumpir al agente hablando. Experimental; apagado por defecto.
+BARGE_IN: bool = _flag("BARGE_IN", "false")
+
+# --- Historial de la llamada (A3): ventana deslizante ---
+# Nº máximo de turnos (user+assistant) que se conservan además del system.
+HISTORY_MAX_TURNS: int = int(os.getenv("HISTORY_MAX_TURNS", "8"))
+
+# --- Topes de turno/llamada (A5) ---
+MAX_UTTERANCE_MS: int = int(os.getenv("MAX_UTTERANCE_MS", "15000"))
+MAX_CALL_SECONDS: int = int(os.getenv("MAX_CALL_SECONDS", "600"))
+
+# --- Observabilidad (A6) ---
+LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+LOG_JSON: bool = _flag("LOG_JSON", "false")
+# Carpeta para persistir transcripciones de llamadas (vacío = desactivado, privacidad).
+CALL_LOG_DIR: str = os.getenv("CALL_LOG_DIR", "")
+
+# --- Seguridad del dispatch de herramientas (A8, anti-SSRF) ---
+# Lista blanca de hosts permitidos (coma-separada). Vacío = sin restricción.
+TOOLS_ALLOWED_HOSTS: list[str] = [
+    h.strip().lower() for h in os.getenv("TOOLS_ALLOWED_HOSTS", "").split(",") if h.strip()
+]
+# Bloquear IPs privadas/loopback/metadata salvo que se habiliten explícitamente.
+TOOLS_ALLOW_PRIVATE: bool = _flag("TOOLS_ALLOW_PRIVATE", "false")
+
+# --- Autenticación de la webui (B1) ---
+WEBUI_USER: str = os.getenv("WEBUI_USER", "admin")
+WEBUI_PASSWORD_HASH: str = os.getenv("WEBUI_PASSWORD_HASH", "")
+# Contraseña en claro SOLO para arranque/lab: si no hay hash, se usa esta.
+WEBUI_PASSWORD: str = os.getenv("WEBUI_PASSWORD", "")
+WEBUI_SECRET: str = os.getenv("WEBUI_SECRET", "")
+WEBUI_SESSION_HOURS: int = int(os.getenv("WEBUI_SESSION_HOURS", "12"))
+
 PROJECT_ROOT = _PROJECT_ROOT
+DATA_DIR = _PROJECT_ROOT / "data"
