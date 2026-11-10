@@ -28,10 +28,13 @@ Nota de red (Docker): para llegar a un servicio del PROPIO host usa
 """
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
+import socket
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -102,6 +105,44 @@ def _auth_headers(auth: str) -> dict[str, str]:
     return h
 
 
+def _resolve_ips(host: str) -> list[str]:
+    try:
+        return [info[4][0] for info in socket.getaddrinfo(host, None)]
+    except (socket.gaierror, OSError):
+        return []
+
+
+def _is_blocked_ip(ip_str: str) -> bool:
+    """Loopback / link-local (incluye metadata 169.254.169.254) / privadas / reservadas."""
+    try:
+        ip = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return False
+    return ip.is_loopback or ip.is_link_local or ip.is_private or ip.is_reserved
+
+
+def check_url_allowed(url: str) -> str | None:
+    """A8 (anti-SSRF). Devuelve un motivo de bloqueo, o None si se permite.
+
+    Solo restringe cuando hay allowlist configurada (``TOOLS_ALLOWED_HOSTS``). Con
+    la allowlist activa: el host debe estar en la lista y, salvo
+    ``TOOLS_ALLOW_PRIVATE``, no puede resolver a IP privada/loopback/metadata.
+    """
+    if not config.TOOLS_ALLOWED_HOSTS:
+        return None
+    host = (urlparse(url).hostname or "").lower()
+    if not host:
+        return "URL sin host"
+    allowed = any(host == h or host.endswith("." + h) for h in config.TOOLS_ALLOWED_HOSTS)
+    if not allowed:
+        return f"host no permitido por TOOLS_ALLOWED_HOSTS: {host}"
+    if not config.TOOLS_ALLOW_PRIVATE:
+        for ip in _resolve_ips(host):
+            if _is_blocked_ip(ip):
+                return f"IP bloqueada ({ip}) para host {host}; usa TOOLS_ALLOW_PRIVATE=true si es intencional"
+    return None
+
+
 def dispatch(name: str, args: dict[str, Any] | None) -> dict[str, Any]:
     """Enruta por nombre y ejecuta la herramienta. Nunca lanza: errores como dict."""
     args = args or {}
@@ -136,12 +177,17 @@ def dispatch(name: str, args: dict[str, Any] | None) -> dict[str, Any]:
         else:
             query[n] = args[n]
 
+    # A8 (anti-SSRF): valida el host antes de salir a la red.
+    blocked = check_url_allowed(url)
+    if blocked is not None:
+        return {"estado": "ERROR", "detalle": f"bloqueado por seguridad: {blocked}", "url": url}
+
     # Cabeceras: auth global (bearer) + cabeceras propias de la herramienta.
     headers = _auth_headers(cfg.get("auth", "none"))
     for h in cfg.get("headers", []) or []:
-        name = (h.get("name") or "").strip()
-        if name:
-            headers[name] = h.get("value", "")
+        hname = (h.get("name") or "").strip()  # (antes 'name' pisaba el parámetro de la función)
+        if hname:
+            headers[hname] = h.get("value", "")
 
     method = cfg.get("method", "GET").upper()
     try:
