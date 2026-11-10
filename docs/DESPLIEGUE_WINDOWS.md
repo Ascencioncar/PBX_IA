@@ -67,6 +67,10 @@ docker compose logs -f audiosocket     # debe decir que escucha en 0.0.0.0:9000
 
 - **Interfaz web:** abre <http://localhost:8000> (configura herramientas, prueba
   el chat y cambia el modelo). Si ves la versión vieja, recarga con **Ctrl+F5**.
+  - **Login (B1):** ahora pide usuario/contraseña. Por defecto `admin` / `admin`
+    (verás un aviso). Para producción define `WEBUI_PASSWORD_HASH` en `.env`:
+    `python -c "import bcrypt;print(bcrypt.hashpw(b'TU_CLAVE',bcrypt.gensalt()).decode())"`.
+- **Tests:** `docker compose run --rm --no-deps agent sh -c "pip install -q ruff pytest && ruff check . && pytest"`.
 - **Chat de prueba:** en la UI, pestaña *Chat*, escribe
   *«¿cuál es el estado de la factura 53380?»*.
 

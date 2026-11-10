@@ -8,6 +8,28 @@
 
 ---
 
+## 0. Instalación en un comando (recomendado)
+
+Con el repo clonado y **Docker** abierto:
+
+```bash
+make mac          # equivale a: ./scripts/install-mac.sh
+```
+
+El script es **idempotente** (puedes repetirlo) y hace todo: comprueba macOS/Apple
+Silicon, instala Ollama y espeak-ng con Homebrew si faltan, arranca Ollama nativo y
+descarga el modelo, genera `.env` con `OLLAMA_HOST=host.docker.internal` y **secretos**
+(hash de la contraseña de la webui + secreto de sesión), construye y levanta los
+contenedores, y chequea que la webui responda. Al final imprime la **URL, el usuario y la
+contraseña** generada.
+
+> La primera vez tarda (descarga el modelo y construye imágenes, torch incluido).
+> Acceso luego: <http://localhost:8000> → **login** con las credenciales que imprimió.
+
+Operación: `make up` · `make down` · `make logs` · `make health` · `make test`.
+
+Si prefieres hacerlo a mano, sigue las secciones siguientes.
+
 ## 1. Requisitos
 
 - **macOS** en Apple Silicon (M1/M2/M3/M4/M5).
