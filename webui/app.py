@@ -148,9 +148,22 @@ def info():
 
 
 def _tcp_ok(host: str, port: int, timeout: float = 1.0) -> bool:
+    """True solo si acepta la conexión TCP (para servidores TCP como audiosocket)."""
     try:
         with socket.create_connection((host, port), timeout=timeout):
             return True
+    except OSError:
+        return False
+
+
+def _host_up(host: str, port: int, timeout: float = 1.0) -> bool:
+    """True si el host está alcanzable aunque rechace el puerto (Asterisk sirve SIP
+    por UDP; un 'connection refused' en TCP igual indica que el contenedor está vivo)."""
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except ConnectionRefusedError:
+        return True
     except OSError:
         return False
 
@@ -171,7 +184,7 @@ def status():
         "services": {
             "ollama": ollama_ok,
             "audiosocket": _tcp_ok(AUDIOSOCKET_SVC, config.AUDIOSOCKET_PORT),
-            "asterisk": _tcp_ok(ASTERISK_SVC, 5060),
+            "asterisk": _host_up(ASTERISK_SVC, 5060),
         },
         "provider": s.get("provider"),
         "model": s.get("model"),
