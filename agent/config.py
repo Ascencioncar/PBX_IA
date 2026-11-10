@@ -23,6 +23,9 @@ NUM_CTX: int = int(os.getenv("NUM_CTX", "8192"))
 LLM_THINK: bool = os.getenv("LLM_THINK", "false").lower() in {"1", "true", "yes", "si", "sí"}
 # Tope de tokens de respuesta: respuestas cortas = menos latencia de LLM y de TTS.
 NUM_PREDICT: int = int(os.getenv("NUM_PREDICT", "200"))
+# Mantener el modelo cargado en memoria para no pagar la recarga (clave en voz:
+# una llamada tras inactividad no debe esperar 30-60s a que Ollama recargue).
+OLLAMA_KEEP_ALIVE: str = os.getenv("OLLAMA_KEEP_ALIVE", "30m")
 
 # --- STT (faster-whisper) ---
 WHISPER_MODEL: str = os.getenv("WHISPER_MODEL", "small")

@@ -85,6 +85,7 @@ def _run_ollama(messages, s, model, max_iterations, verbose, on_tool):
             messages=messages,
             tools=tools.get_schemas(),
             options={"num_ctx": s.get("num_ctx"), "num_predict": s.get("num_predict")},
+            keep_alive=config.OLLAMA_KEEP_ALIVE,
         )
         try:
             # qwen3: desactivar reasoning = mucha menos latencia.
@@ -205,6 +206,7 @@ def _stream_ollama(messages, s, model, max_iterations, on_tool) -> Iterator[str]
             messages=messages,
             tools=tools.get_schemas(),
             options={"num_ctx": s.get("num_ctx"), "num_predict": s.get("num_predict")},
+            keep_alive=config.OLLAMA_KEEP_ALIVE,
             stream=True,
         )
         try:

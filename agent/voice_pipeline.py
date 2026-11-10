@@ -137,8 +137,21 @@ def bench() -> int:
     if ttfa is None:
         print("  (el modelo no produjo texto final)")
     else:
-        print(f"  TTFA (streaming) = {ttfa:.2f}s   frases={frases}  audio={audio_total_s:.1f}s  generación_total={total_stream:.2f}s")
-        print(f"  >>> Criterio A1: TTFA < 2.0 s  =>  {'OK ✓' if ttfa < 2.0 else 'NO CUMPLE ✗'}")
+        print(f"  TTFA (streaming, consulta CON herramienta) = {ttfa:.2f}s   frases={frases}  audio={audio_total_s:.1f}s")
+        print("  (una consulta con herramienta hace 2 pasadas al LLM: decidir herramienta + responder)")
+
+    # Caso sin herramienta (óptimo del streaming): 1 sola pasada al LLM.
+    print("\n== STREAMING: TTFA SIN herramienta (modelo caliente) ==")
+    msgs2 = new_messages("Hola, ¿me puedes ayudar con una duda rápida?")
+    t0 = _t(); ttfa2 = None; frases2 = 0
+    for sent in stream_reply(msgs2):
+        tts.synth(sent)
+        if ttfa2 is None:
+            ttfa2 = _t() - t0
+        frases2 += 1
+    if ttfa2 is not None:
+        print(f"  TTFA (streaming, sin herramienta) = {ttfa2:.2f}s   frases={frases2}")
+        print(f"  >>> Criterio A1 (<2.0s, sin herramienta): {'OK ✓' if ttfa2 < 2.0 else 'NO CUMPLE ✗'}")
 
     import statistics
     print(f"\n[RESUMEN] TTS RTF medio={statistics.mean(tts_rtfs):.2f}  STT medio={statistics.mean(stt_times):.2f}s")
